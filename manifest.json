@@ -1,8 +1,9 @@
 {
-  "display_name": "CG Generator",
-  "version": "0.1.1",
-  "js": "index.js",
-  "css": "style.css",
-  "author": "chatgpt",
-  "description": "image### prompt CG generator for SillyTavern"
+  "name": "CG Generator",
+  "id": "cg-generator",
+  "version": "1.2.0",
+  "author": "CG",
+  "description": "Batch CG + Auto Toggle (no queue)",
+  "main": "index.js",
+  "css": "style.css"
 }

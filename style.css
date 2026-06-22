@@ -1,5 +1,24 @@
 
-.cg-box img{
-  margin-top:6px;
-  border-radius:8px;
+.cg-btn {
+    display:inline-block;
+    padding:4px 12px;
+    border-radius:999px;
+    cursor:pointer;
+    background:var(--SmartThemeQuoteColor);
+    color:var(--SmartThemeBodyColor);
+    font-size:12px;
+    margin-right:6px;
 }
+.cg-images {margin-top:6px;display:flex;flex-direction:column;gap:6px;}
+.cg-images img {max-width:220px;border-radius:6px;cursor:pointer;}
+.cg-modal {position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;}
+.cg-modal img {max-width:80vw;max-height:80vh;}
+.cg-modal-actions {margin-top:10px;display:flex;gap:10px;justify-content:center;}
+.cg-spinner {
+ border:3px solid rgba(255,255,255,0.2);
+ border-top:3px solid white;
+ border-radius:50%;
+ width:14px;height:14px;
+ animation:cg-spin 1s linear infinite;
+}
+@keyframes cg-spin {to{transform:rotate(360deg);}}

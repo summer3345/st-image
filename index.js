@@ -1,6 +1,11 @@
 (function () {
     const CFG_KEY = "cg_generator_cfg_v1";
+    const EXT_NAME = "cg-generator";
     const state = { configs: [], active: 0 };
+
+    function ctx() {
+        return SillyTavern.getContext();
+    }
 
     function loadCfg() {
         try {
@@ -13,10 +18,6 @@
         localStorage.setItem(CFG_KEY, JSON.stringify(state));
     }
 
-    function getContext() {
-        return window.SillyTavern?.getContext?.();
-    }
-
     const REG = /image###([\s\S]*?)###/g;
     function extract(text) {
         const res = [];
@@ -27,15 +28,17 @@
 
     function makeBtn(prompt, msgEl, container) {
         const btn = document.createElement("button");
-        btn.innerText = " Generate CG";
+        btn.innerText = "? Generate CG";
+        btn.className = "menu_button";
         btn.style.marginTop = "6px";
         const imgBox = document.createElement("div");
         imgBox.className = "cg-box";
         
         btn.onclick = async () => {
             const cfg = state.configs[state.active];
-            if (!cfg) return alert("No config! API");
+            if (!cfg) return toastr.error("No config! 请先在扩展面板配置API信息。");
             btn.innerText = "Generating...";
+            btn.disabled = true;
             try {
                 let res;
                 if (cfg.protocol === "images") {
@@ -54,29 +57,35 @@
                 const img = parseImage(res);
                 if (img) {
                     const wrapper = document.createElement("div");
+                    wrapper.style.marginTop = "10px";
                     const image = document.createElement("img");
                     image.src = img;
                     image.style.maxWidth = "100%";
                     const dl = document.createElement("button");
-                    dl.innerText = " Download";
+                    dl.innerText = "? Download";
+                    dl.className = "menu_button";
+                    dl.style.marginRight = "5px";
                     dl.onclick = () => download(img);
                     const del = document.createElement("button");
-                    del.innerText = " Delete";
+                    del.innerText = "? Delete";
+                    del.className = "menu_button";
                     del.onclick = () => wrapper.remove();
                     wrapper.appendChild(image);
+                    wrapper.appendChild(document.createElement("br"));
                     wrapper.appendChild(dl);
                     wrapper.appendChild(del);
                     imgBox.appendChild(wrapper);
                     saveToMessage(msgEl, img);
                 } else {
-                    alert("API");
+                    toastr.error("生成失败，请检查控制台报错。");
                     console.error("CG API Response:", res);
                 }
             } catch (e) {
                 console.error(e);
-                alert("CG error: " + e.message);
+                toastr.error("CG error: " + e.message);
             } finally {
-                btn.innerText = " Generate CG";
+                btn.innerText = "? Generate CG";
+                btn.disabled = false;
             }
         };
         container.appendChild(btn);
@@ -109,14 +118,14 @@
 
     function saveToMessage(msgEl, img) {
         try {
-            const ctx = getContext();
+            const c = ctx();
             const id = msgEl?.getAttribute("mesid");
-            if (!ctx || !id) return;
-            ctx.chat[id] = ctx.chat[id] || {};
-            ctx.chat[id].extra = ctx.chat[id].extra || {};
-            ctx.chat[id].extra.cgImages = ctx.chat[id].extra.cgImages || [];
-            ctx.chat[id].extra.cgImages.push(img);
-            ctx.saveChat?.();
+            if (!c || !id) return;
+            c.chat[id] = c.chat[id] || {};
+            c.chat[id].extra = c.chat[id].extra || {};
+            c.chat[id].extra.cgImages = c.chat[id].extra.cgImages || [];
+            c.chat[id].extra.cgImages.push(img);
+            c.saveChat?.();
         } catch (e) {}
     }
 
@@ -128,73 +137,97 @@
             if (!prompts.length) return;
             m.dataset.cgDone = "1";
             const container = document.createElement("div");
+            container.style.padding = "0 10px";
             prompts.forEach(p => makeBtn(p, m, container));
             m.appendChild(container);
         });
     }
 
-    // ---  ST  ---
-    function injectSettingsUI() {
-        const extSettings = document.getElementById("extensions_settings");
-        if (!extSettings) {
-            //  ST 1
-            setTimeout(injectSettingsUI, 1000);
-            return;
-        }
-
-        const html = `
-        <div class="cg-generator-extension" style="border-top: 1px solid #ccc; margin-top: 10px; padding-top: 10px;">
-            <h3>CG Generator</h3> 
-            <p>v0.1.1 | Format: image###prompt###</p>
-            <p>Configs stored in localStorage.</p>
-            
-            <label>API URL:</label><br>
-            <input id="cg_url" class="text_pole" style="width:100%; margin-bottom:5px;" placeholder="https://api.example.com"><br>
-            
-            <label>API Key:</label><br>
-            <input id="cg_key" type="password" class="text_pole" style="width:100%; margin-bottom:5px;" placeholder="sk-..."><br>
-            
-            <label>Model:</label><br>
-            <input id="cg_model" class="text_pole" style="width:100%; margin-bottom:5px;" placeholder="dall-e-3"><br>
-            
-            <label>Protocol:</label><br>
-            <select id="cg_protocol" class="text_pole" style="width:100%; margin-bottom:10px;">
-                <option value="images">images ()</option>
-                <option value="chat">chat ()</option>
-            </select><br>
-            
-            <button id="cg_save_btn" class="menu_button"></button>
-        </div>`;
-        
-        extSettings.insertAdjacentHTML('beforeend', html);
-
-        // 
+    // --- 新增：参考标准插件规范编写的 UI 注入 ---
+    function createUI() {
         const cfg = state.configs[state.active] || {};
-        document.getElementById("cg_url").value = cfg.url || "";
-        document.getElementById("cg_key").value = cfg.key || "";
-        document.getElementById("cg_model").value = cfg.model || "";
-        document.getElementById("cg_protocol").value = cfg.protocol || "images";
+        
+        const html = `
+        <div class="inline-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header">
+                <b>? CG Generator 设置</b>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+                <p>格式: <code>image###prompt###</code> (AI输出此格式即可生成按钮)</p>
+                
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b>API 配置</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <label>API 地址</label>
+                        <input type="text" id="cg_url" class="text_pole" value="${cfg.url || ""}" placeholder="https://api.openai.com">
+                        
+                        <label>API 密钥</label>
+                        <input type="password" id="cg_key" class="text_pole" value="${cfg.key || ""}" placeholder="sk-...">
+                        
+                        <label>模型名称</label>
+                        <input type="text" id="cg_model" class="text_pole" value="${cfg.model || ""}" placeholder="dall-e-3">
+                        
+                        <label>协议类型</label>
+                        <select id="cg_protocol" class="text_pole">
+                            <option value="images" ${cfg.protocol === 'images' ? 'selected' : ''}>images (标准画图接口)</option>
+                            <option value="chat" ${cfg.protocol === 'chat' ? 'selected' : ''}>chat (多模态对话接口)</option>
+                        </select>
+                        
+                        <div style="margin-top: 10px;">
+                            <input type="button" id="cg_save_btn" class="menu_button" value="保存配置">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
 
-        // 
-        document.getElementById("cg_save_btn").onclick = () => {
+        // 挂载到 ST 的扩展设置容器 2
+        $("#extensions_settings2").append(html);
+
+        // 绑定折叠面板点击事件
+        $(".inline-drawer-toggle").on("click", function() {
+            $(this).parent().toggleClass("inline-drawer-expanded");
+        });
+
+        // 绑定保存按钮
+        $("#cg_save_btn").on("click", function() {
             state.configs = [{
-                protocol: document.getElementById("cg_protocol").value,
-                url: document.getElementById("cg_url").value,
-                key: document.getElementById("cg_key").value,
-                model: document.getElementById("cg_model").value
+                protocol: $("#cg_protocol").val(),
+                url: $("#cg_url").val(),
+                key: $("#cg_key").val(),
+                model: $("#cg_model").val()
             }];
             state.active = 0;
             saveCfg();
-            alert("CG Generator ");
-        };
+            toastr.success("CG Generator 配置已保存！");
+        });
     }
 
     function init() {
         loadCfg();
-        injectSettingsUI(); //  UI
+        createUI();
         setInterval(scan, 1200);
+        console.log("[CG Generator] 插件已加载");
     }
 
-    init();
+    // 参考你提供的代码，使用 APP_READY 事件确保 ST 完全加载后再初始化
+    const waitAndInit = setInterval(() => {
+        if (typeof SillyTavern !== "undefined" && SillyTavern.getContext) {
+            const c = SillyTavern.getContext();
+            if (c.eventSource && c.event_types && c.event_types.APP_READY) {
+                clearInterval(waitAndInit);
+                c.eventSource.on(c.event_types.APP_READY, init);
+            } else if (c.extensionSettings) {
+                // 兼容旧版没有 APP_READY 的情况
+                clearInterval(waitAndInit);
+                init();
+            }
+        }
+    }, 300);
 })();
+
 

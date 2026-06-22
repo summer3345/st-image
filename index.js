@@ -4,20 +4,17 @@ import { getContext } from "../../../script.js";
 let ctx;
 const EXT_ID="cg-generator";
 
-const state={
- configs:[],
- current:null,
- auto:false
-};
+const state={configs:[],current:null,auto:false};
 
 document.addEventListener("APP_READY", async ()=>{
  ctx=getContext();
  loadSettings();
- renderDrawer();
+ createUI();
  hookMessages();
  restoreImages();
 });
 
+/* settings */
 function loadSettings(){
  const d=ctx.extensionSettings[EXT_ID]||{};
  Object.assign(state,d);
@@ -27,29 +24,49 @@ function saveSettings(){
  ctx.saveSettingsDebounced();
 }
 
-/* UI */
-function renderDrawer(){
+/* UI (FIXED FRAMEWORK) */
+function createUI(){
  const html=`
  <div class="inline-drawer">
-  <div class="inline-drawer-toggle">🎨 CG Generator</div>
-  <div class="inline-drawer-content">
-   <label><input type="checkbox" id="cg-auto"> Auto Generate</label>
-   <div id="cg-configs"></div>
-   <button id="cg-add">+ Add Config</button>
-  </div>
- </div>`;
+   <div class="inline-drawer-toggle inline-drawer-header">
+     <b>🎨 CG Generator</b>
+     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+   </div>
+
+   <div class="inline-drawer-content">
+
+     <div style="margin-bottom:10px;">
+       <label class="checkbox_label">
+         <input type="checkbox" id="cg-auto" ${state.auto?'checked':''}>
+         <span>Auto Generate</span>
+       </label>
+     </div>
+
+     <div id="cg-configs"></div>
+     <button id="cg-add" class="menu_button">+ Add Config</button>
+
+   </div>
+ </div>
+ `;
  $("#extensions_settings2").append(html);
 
- $("#cg-auto").prop("checked",state.auto).on("change",function(){
-  state.auto=this.checked; saveSettings();
+ $(".inline-drawer-toggle").on("click", function () {
+   $(this).parent().toggleClass("inline-drawer-expanded");
+ });
+
+ $("#cg-auto").on("change",function(){
+   state.auto=this.checked;
+   saveSettings();
  });
 
  $("#cg-add").on("click",addConfig);
+
  renderConfigs();
 }
 
 function renderConfigs(){
  const wrap=$("#cg-configs").empty();
+
  state.configs.forEach((c,i)=>{
   const el=$(`
   <div style="border:1px solid #444;padding:6px;margin-bottom:6px;">
@@ -59,18 +76,22 @@ function renderConfigs(){
    <input placeholder="Model" value="${c.model||""}">
    <input placeholder="Size" value="${c.size||"1024x1024"}">
    <select>
-    <option value="images" ${c.type==="images"?"selected":""}>Images</option>
-    <option value="chat" ${c.type==="chat"?"selected":""}>Chat</option>
+     <option value="images" ${c.type==="images"?"selected":""}>Images</option>
+     <option value="chat" ${c.type==="chat"?"selected":""}>Chat</option>
    </select>
-   <button class="use">Use</button>
-   <button class="del">Del</button>
+   <button class="menu_button use">Use</button>
+   <button class="menu_button del">Del</button>
   </div>`);
 
   el.find("input").each((idx,input)=>{
-   const keys=["name","url","key","model","size"];
-   $(input).on("change",()=>{c[keys[idx]]=input.value;saveSettings();});
+    const keys=["name","url","key","model","size"];
+    $(input).on("change",()=>{c[keys[idx]]=input.value;saveSettings();});
   });
-  el.find("select").on("change",function(){c.type=this.value;saveSettings();});
+
+  el.find("select").on("change",function(){
+    c.type=this.value;saveSettings();
+  });
+
   el.find(".use").on("click",()=>{state.current=i;saveSettings();});
   el.find(".del").on("click",()=>{state.configs.splice(i,1);saveSettings();renderConfigs();});
 
@@ -80,7 +101,8 @@ function renderConfigs(){
 
 function addConfig(){
  state.configs.push({name:"",url:"",key:"",model:"",size:"1024x1024",type:"images"});
- saveSettings(); renderConfigs();
+ saveSettings();
+ renderConfigs();
 }
 
 /* messages */
@@ -105,15 +127,14 @@ function processMessages(){
   const wrap=$('<div class="cg-images"></div>');
 
   matches.forEach(m=>{
-   const prompt=m[1];
-   const btn=$('<div class="cg-btn">CG</div>');
-   btn.on("click",()=>generate(prompt,wrap,btn,mes));
+    const prompt=m[1];
+    const btn=$('<div class="cg-btn">CG</div>');
+    btn.on("click",()=>generate(prompt,wrap,btn,mes));
+    textEl.append(btn);
 
-   textEl.append(btn);
-
-   if(state.auto){
-    setTimeout(()=>generate(prompt,wrap,btn,mes),100);
-   }
+    if(state.auto){
+      setTimeout(()=>generate(prompt,wrap,btn,mes),100);
+    }
   });
 
   textEl.append(wrap);
@@ -129,18 +150,19 @@ async function generate(prompt,wrap,btn,mes){
 
  try{
   const res=await fetch(cfg.url,{
-   method:"POST",
-   headers:{
-    "Content-Type":"application/json",
-    "Authorization":"Bearer "+cfg.key
-   },
-   body:JSON.stringify(buildBody(cfg,prompt))
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+cfg.key
+    },
+    body:JSON.stringify(buildBody(cfg,prompt))
   });
 
   const data=await res.json();
   const urls=parseImages(data);
 
   urls.forEach(u=>appendImage(u,wrap,mes));
+
  }catch(e){console.error(e);}
 
  btn.text("CG");
@@ -156,10 +178,10 @@ function buildBody(cfg,prompt){
 function parseImages(data){
  const out=[];
  if(data.data){
-  data.data.forEach(i=>{
-   if(i.url) out.push(i.url);
-   if(i.b64_json) out.push("data:image/png;base64,"+i.b64_json);
-  });
+   data.data.forEach(i=>{
+     if(i.url) out.push(i.url);
+     if(i.b64_json) out.push("data:image/png;base64,"+i.b64_json);
+   });
  }
  return out;
 }
@@ -174,13 +196,14 @@ function appendImage(url,wrap,mes){
 
 function openModal(url,imgEl,mes){
  let scale=1;
+
  const modal=$(`
  <div class="cg-modal">
   <div>
    <img src="${url}">
    <div class="cg-modal-actions">
-    <button class="d">Download</button>
-    <button class="x">Delete</button>
+    <button class="menu_button d">Download</button>
+    <button class="menu_button x">Delete</button>
    </div>
   </div>
  </div>`);

@@ -169,10 +169,51 @@
     });
   }
 
-  function init() {
-    loadCfg();
-    setInterval(scan, 1200);
-  }
+  function injectSettingsUI() {
+    //  HTML  settings.txt
+    const settingsHtml = `
+    <div class="cg-generator-extension">
+        <h3>CG Generator</h3> 
+        <p>v0.1.1</p> 
+        <p>Configs stored in localStorage.</p> 
+        <p>Format: image###prompt###</p>
+    </div>`;
+    
+    //  ST  HTML 
+    const extSettings = document.getElementById("extensions_settings");
+    if (extSettings) {
+        extSettings.insertAdjacentHTML('beforeend', settingsHtml);
+    } else {
+        //  ST 
+        setTimeout(injectSettingsUI, 1000);
+    }
+}
 
-  init();
+function injectSettingsUI() {
+    //  HTML  settings.txt
+    const settingsHtml = `
+    <div class="cg-generator-extension">
+        <h3>CG Generator</h3> 
+        <p>v0.1.1</p> 
+        <p>Configs stored in localStorage.</p> 
+        <p>Format: image###prompt###</p>
+    </div>`;
+    
+    //  ST  HTML 
+    const extSettings = document.getElementById("extensions_settings");
+    if (extSettings) {
+        extSettings.insertAdjacentHTML('beforeend', settingsHtml);
+    } else {
+        //  ST 
+        setTimeout(injectSettingsUI, 1000);
+    }
+}
+
+function init() { 
+    loadCfg(); 
+    injectSettingsUI(); // 
+    setInterval(scan, 1200); 
+}
+init();
+
 })();

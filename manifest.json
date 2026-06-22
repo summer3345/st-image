@@ -1,0 +1,11 @@
+﻿{
+  "name": "Image Generation Plugin",
+  "version": "1.0.0",
+  "description": "Generate images from text using third-party APIs with multi-profile support.",
+  "author": "Your Name",
+  "license": "MIT",
+  "main": "index.js",
+  "settings_html": "settings.html",
+  "dependencies": {}
+}
+

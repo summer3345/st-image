@@ -1,0 +1,42 @@
+﻿<div class="st-settings-panel">
+  <!-- API配置区域 -->
+  <div class="st-form-group">
+    <label>API Profiles</label>
+    <select id="api-profile-select">
+      <!-- 动态生成选项 -->
+    </select>
+    <button id="new-profile-btn">New Profile</button>
+    <button id="delete-profile-btn">Delete Profile</button>
+  </div>
+
+  <!-- 当前配置输入 -->
+  <div class="st-form-group">
+    <label>API URL</label>
+    <input type="text" id="api-url" placeholder="https://example.com/v1">
+  </div>
+  <div class="st-form-group">
+    <label>API Key</label>
+    <input type="password" id="api-key" placeholder="sk-...">
+  </div>
+  <div class="st-form-group">
+    <label>Model</label>
+    <select id="api-model">
+      <!-- 动态生成模型选项 -->
+    </select>
+    <button id="fetch-models-btn">Fetch Models</button>
+  </div>
+  <div class="st-form-group">
+    <label>Interface Type</label>
+    <select id="api-type">
+      <option value="images">Images (v1/images/generations)</option>
+      <option value="chat">Chat (v1/chat/completions)</option>
+    </select>
+  </div>
+
+  <!-- 操作按钮 -->
+  <div class="st-form-group">
+    <button id="test-connection-btn">Test Connection</button>
+    <button id="save-profile-btn">Save Profile</button>
+  </div>
+</div>
+

@@ -1,0 +1,42 @@
+﻿.st-settings-panel {
+  padding: 1rem;
+}
+
+.st-form-group {
+  margin-bottom: 1rem;
+}
+
+.st-form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+.st-form-group input,
+.st-form-group select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.st-form-group button {
+  margin-right: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.st-form-group button:hover {
+  background-color: #45a049;
+}
+
+.generated-img {
+  max-width: 100%;
+  margin-top: 1rem;
+  border-radius: 4px;
+}
+

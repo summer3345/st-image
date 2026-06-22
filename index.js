@@ -1,271 +1,178 @@
-﻿import { extension_settings, saveSettingsDebounced, eventSource, chat } from '../../../../script.js';
 
-export class ImageGenPlugin {
-  constructor() {
-    this.pluginName = 'image-gen-plugin';
-    this.settings = extension_settings[this.pluginName] || {
-      profiles: [],
-      currentProfileId: null
+(function () {
+  const CFG_KEY = "cg_generator_cfg_v1";
+
+  const state = {
+    configs: [],
+    active: 0
+  };
+
+  function loadCfg() {
+    try {
+      const raw = localStorage.getItem(CFG_KEY);
+      if (raw) Object.assign(state, JSON.parse(raw));
+    } catch (e) {}
+  }
+
+  function saveCfg() {
+    localStorage.setItem(CFG_KEY, JSON.stringify(state));
+  }
+
+  function getContext() {
+    return window.SillyTavern?.getContext?.();
+  }
+
+  const REG = /image###([\s\S]*?)###/g;
+
+  function extract(text) {
+    const res = [];
+    let m;
+    while ((m = REG.exec(text))) res.push(m[1].trim());
+    return res;
+  }
+
+  function makeBtn(prompt, msgEl, container) {
+    const btn = document.createElement("button");
+    btn.innerText = "🎨 Generate CG";
+    btn.style.marginTop = "6px";
+
+    const imgBox = document.createElement("div");
+    imgBox.className = "cg-box";
+
+    btn.onclick = async () => {
+      const cfg = state.configs[state.active];
+      if (!cfg) return alert("No config");
+
+      btn.innerText = "Generating...";
+
+      try {
+        let res;
+
+        if (cfg.protocol === "images") {
+          res = await fetch(cfg.url + "/v1/images/generations", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + cfg.key
+            },
+            body: JSON.stringify({
+              model: cfg.model,
+              prompt
+            })
+          }).then(r => r.json());
+        } else {
+          res = await fetch(cfg.url + "/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + cfg.key
+            },
+            body: JSON.stringify({
+              model: cfg.model,
+              messages: [{ role: "user", content: prompt }]
+            })
+          }).then(r => r.json());
+        }
+
+        const img = parseImage(res);
+
+        if (img) {
+          const wrapper = document.createElement("div");
+          const image = document.createElement("img");
+          image.src = img;
+          image.style.maxWidth = "100%";
+
+          const dl = document.createElement("button");
+          dl.innerText = "⬇ Download";
+          dl.onclick = () => download(img);
+
+          const del = document.createElement("button");
+          del.innerText = "🗑 Delete";
+          del.onclick = () => wrapper.remove();
+
+          wrapper.appendChild(image);
+          wrapper.appendChild(dl);
+          wrapper.appendChild(del);
+
+          imgBox.appendChild(wrapper);
+
+          saveToMessage(msgEl, img);
+        }
+
+      } catch (e) {
+        console.error(e);
+        alert("CG error");
+      } finally {
+        btn.innerText = "🎨 Generate CG";
+      }
     };
-    this.init();
+
+    container.appendChild(btn);
+    container.appendChild(imgBox);
   }
 
-  init() {
-    this.loadSettings();
-    this.setupEventListeners();
-    this.setupSettingsUI();
+  function parseImage(res) {
+    try {
+      return (
+        res?.data?.[0]?.url ||
+        res?.data?.[0]?.b64_json ||
+        res?.choices?.[0]?.message?.content?.[0]?.image_url ||
+        null
+      );
+    } catch {
+      return null;
+    }
   }
 
-  // 加载设置
-  loadSettings() {
-    if (!this.settings.profiles.length) {
-      // 默认创建一个空档位
-      this.settings.profiles.push({
-        id: Date.now().toString(),
-        name: 'Default Profile',
-        url: '',
-        key: '',
-        model: '',
-        type: 'images'
+  function download(url) {
+    fetch(url)
+      .then(r => r.blob())
+      .then(b => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(b);
+        a.download = "cg.png";
+        a.click();
       });
-      this.settings.currentProfileId = this.settings.profiles[0].id;
-    }
   }
 
-  // 设置事件监听
-  setupEventListeners() {
-    eventSource.on('message-rendered', this.handleMessageRendered.bind(this));
+  function saveToMessage(msgEl, img) {
+    try {
+      const ctx = getContext();
+      const id = msgEl?.getAttribute("mesid");
+      if (!ctx || !id) return;
+
+      ctx.chat[id] = ctx.chat[id] || {};
+      ctx.chat[id].extra = ctx.chat[id].extra || {};
+      ctx.chat[id].extra.cgImages = ctx.chat[id].extra.cgImages || [];
+      ctx.chat[id].extra.cgImages.push(img);
+
+      ctx.saveChat?.();
+    } catch (e) {}
   }
 
-  // 处理消息渲染（替换文本为按钮）
-  handleMessageRendered(message) {
-    const text = message.message;
-    const regex = /image###(.*?)###/g;
-    let match;
-    
-    while ((match = regex.exec(text)) !== null) {
-      const prompt = match[1];
-      const button = document.createElement('button');
-      button.className = 'img-gen-btn';
-      button.textContent = '🎨 Generate Image';
-      button.dataset.prompt = prompt;
-      button.dataset.messageId = message.id;
-      button.addEventListener('click', this.handleGenerateImage.bind(this));
-      
-      // 替换文本节点为按钮
-      const textNode = message.element.querySelector('.message-text');
-      textNode.innerHTML = textNode.innerHTML.replace(match[0], button.outerHTML);
-    }
-  }
+  function scan() {
+    document.querySelectorAll(".mes").forEach(m => {
+      if (m.dataset.cgDone) return;
 
-  // 处理生图请求
-  handleGenerateImage(event) {
-    const button = event.target;
-    const prompt = button.dataset.prompt;
-    const profile = this.settings.profiles.find(p => p.id === this.settings.currentProfileId);
-    
-    if (!profile || !profile.url || !profile.key) {
-      alert('Please configure API settings first!');
-      return;
-    }
+      const text = m.querySelector(".mes_text")?.innerText || "";
+      const prompts = extract(text);
 
-    // 禁用按钮，显示加载状态
-    button.disabled = true;
-    button.textContent = 'Generating...';
+      if (!prompts.length) return;
 
-    // 根据接口类型组装请求
-    let requestBody, endpoint;
-    if (profile.type === 'images') {
-      endpoint = '/v1/images/generations';
-      requestBody = { prompt: prompt, model: profile.model };
-    } else {
-      endpoint = '/v1/chat/completions';
-      requestBody = { 
-        model: profile.model, 
-        messages: [{ role: 'user', content: prompt }],
-        stream: false 
-      };
-    }
+      m.dataset.cgDone = "1";
 
-    fetch(`${profile.url}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${profile.key}`
-      },
-      body: JSON.stringify(requestBody)
-    })
-    .then(response => response.json())
-    .then(data => {
-      let imageUrl;
-      
-      if (profile.type === 'images') {
-        imageUrl = data.data[0].url;
-      } else {
-        // 从聊天回复中提取图片URL（假设是Markdown格式）
-        const regex = /!\[.*?\]\((.*?)\)/g;
-        const match = regex.exec(data.choices[0].message.content);
-        imageUrl = match ? match[1] : null;
-      }
+      const container = document.createElement("div");
 
-      if (imageUrl) {
-        const img = document.createElement('img');
-        img.src = imageUrl;
-        img.className = 'generated-img';
-        button.parentNode.insertBefore(img, button.nextSibling);
-      } else {
-        alert('Failed to generate image!');
-      }
+      prompts.forEach(p => makeBtn(p, m, container));
 
-      // 恢复按钮状态
-      button.disabled = false;
-      button.textContent = '🎨 Generate Image';
-    })
-    .catch(error => {
-      console.error('Image generation error:', error);
-      alert('Request failed!');
-      button.disabled = false;
-      button.textContent = '🎨 Generate Image';
+      m.appendChild(container);
     });
   }
 
-  // 设置界面UI逻辑
-  setupSettingsUI() {
-    const profileSelect = document.getElementById('api-profile-select');
-    const newProfileBtn = document.getElementById('new-profile-btn');
-    const deleteProfileBtn = document.getElementById('delete-profile-btn');
-    const apiUrlInput = document.getElementById('api-url');
-    const apiKeyInput = document.getElementById('api-key');
-    const modelSelect = document.getElementById('api-model');
-    const fetchModelsBtn = document.getElementById('fetch-models-btn');
-    const testConnectionBtn = document.getElementById('test-connection-btn');
-    const saveProfileBtn = document.getElementById('save-profile-btn');
-    const apiTypeSelect = document.getElementById('api-type');
-
-    // 更新档位下拉菜单
-    this.updateProfileSelect();
-
-    // 选择档位时填充配置
-    profileSelect.addEventListener('change', (e) => {
-      const profileId = e.target.value;
-      const profile = this.settings.profiles.find(p => p.id === profileId);
-      if (profile) {
-        apiUrlInput.value = profile.url;
-        apiKeyInput.value = profile.key;
-        modelSelect.value = profile.model;
-        apiTypeSelect.value = profile.type;
-      }
-    });
-
-    // 新建档位
-    newProfileBtn.addEventListener('click', () => {
-      const newProfile = {
-        id: Date.now().toString(),
-        name: `Profile ${this.settings.profiles.length + 1}`,
-        url: '',
-        key: '',
-        model: '',
-        type: 'images'
-      };
-      this.settings.profiles.push(newProfile);
-      this.settings.currentProfileId = newProfile.id;
-      this.updateProfileSelect();
-      this.saveSettings();
-    });
-
-    // 删除档位
-    deleteProfileBtn.addEventListener('click', () => {
-      const profileId = profileSelect.value;
-      if (profileId && confirm('Delete this profile?')) {
-        this.settings.profiles = this.settings.profiles.filter(p => p.id !== profileId);
-        this.settings.currentProfileId = this.settings.profiles.length > 0 ? this.settings.profiles[0].id : null;
-        this.updateProfileSelect();
-        this.saveSettings();
-      }
-    });
-
-    // 拉取模型列表
-    fetchModelsBtn.addEventListener('click', () => {
-      const url = apiUrlInput.value;
-      const key = apiKeyInput.value;
-      if (!url || !key) return;
-
-      fetch(`${url}/v1/models`, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${key}` }
-      })
-      .then(response => response.json())
-      .then(data => {
-        modelSelect.innerHTML = '';
-        data.data.forEach(model => {
-          const option = document.createElement('option');
-          option.value = model.id;
-          option.textContent = model.id;
-          modelSelect.appendChild(option);
-        });
-      })
-      .catch(error => {
-        console.error('Fetch models error:', error);
-        alert('Failed to fetch models!');
-      });
-    });
-
-    // 测试连接
-    testConnectionBtn.addEventListener('click', () => {
-      const url = apiUrlInput.value;
-      const key = apiKeyInput.value;
-      if (!url || !key) return;
-
-      fetch(`${url}/v1/models`, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${key}` }
-      })
-      .then(response => {
-        alert(response.ok ? 'Connection successful!' : 'Connection failed!');
-      })
-      .catch(error => {
-        console.error('Test connection error:', error);
-        alert('Connection failed!');
-      });
-    });
-
-    // 保存当前档位配置
-    saveProfileBtn.addEventListener('click', () => {
-      const profileId = profileSelect.value;
-      const profile = this.settings.profiles.find(p => p.id === profileId);
-      if (profile) {
-        profile.url = apiUrlInput.value;
-        profile.key = apiKeyInput.value;
-        profile.model = modelSelect.value;
-        profile.type = apiTypeSelect.value;
-        this.saveSettings();
-        alert('Profile saved!');
-      }
-    });
+  function init() {
+    loadCfg();
+    setInterval(scan, 1200);
   }
 
-  // 更新档位下拉菜单
-  updateProfileSelect() {
-    const profileSelect = document.getElementById('api-profile-select');
-    profileSelect.innerHTML = '';
-    this.settings.profiles.forEach(profile => {
-      const option = document.createElement('option');
-      option.value = profile.id;
-      option.textContent = profile.name;
-      profileSelect.appendChild(option);
-    });
-    if (this.settings.currentProfileId) {
-      profileSelect.value = this.settings.currentProfileId;
-    }
-  }
-
-  // 保存设置
-  saveSettings() {
-    extension_settings[this.pluginName] = this.settings;
-    saveSettingsDebounced();
-  }
-}
-
-// 初始化插件
-const plugin = new ImageGenPlugin();
-
+  init();
+})();
